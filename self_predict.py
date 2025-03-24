@@ -12,22 +12,6 @@ from ultralytics import YOLO
 from ultralytics.utils.plotting import Annotator, colors
 
 
-def yolo_to_coco_boxes(yolo_bbox):
-    """
-    將 YOLO 格式的 bbox 轉換為 COCO 格式。
-
-    Args:
-        yolo_bbox (tuple or list): 包含 (x_center, y_center, width, height) 的 YOLO 格式 bbox。
-
-    Returns:
-        tuple: 包含 (x_min, y_min, width, height) 的 COCO 格式 bbox。
-    """
-    x_center, y_center, width, height = yolo_bbox
-    x_min = x_center - (width / 2)
-    y_min = y_center - (height / 2)
-    return [x_min, y_min, width, height]
-
-
 class Predict:
     def __init__(self, seg_model_path=None):
         # Define stroke index
@@ -67,18 +51,15 @@ class Predict:
 
         # annotation
         self.stage = "train"
-        # self.stage = "test"
-        self.person_bbox_filename = f"stroke_postures_{self.stage}_gt.json"
+        self.person_bbox_filename = f"stroke_postures_train_gt.json"
         self.person_bbox_dict = {
             "categories": [{"supercategory": "person", "id": 1, "name": "person"}],
             "annotations": [],
             "images": [],
         }
-        self.person_keypoint_filename = f"stroke_postures_{self.stage}_bbox_kpts.json"
+        self.person_keypoint_filename = f"stroke_postures_train_bbox_kpts.json"
         self.person_keypoint_list = []
-        self.person_yolo_detect_filename = f"stroke_postures_{self.stage}_yolo_det_score.json"
-        self.person_yolo_detect_list = []
-        self.object_detection_filename = f"stroke_postures_{self.stage}_object_detection.json"
+        self.object_detection_filename = f"stroke_postures_train_object_detection.json"
         self.object_detection_list = []
 
     def load_video_data(self, input_video_path, pose_output_video_path, seg_output_video_path):
@@ -109,7 +90,7 @@ class Predict:
             frame = cv2.rectangle(
                 frame,
                 bb_boxes_pad[:2],
-                (bb_boxes_pad[0] + bb_boxes_pad[2], bb_boxes_pad[1] + bb_boxes_pad[3]),
+                bb_boxes_pad[2:],
                 (255, 0, 0),
                 2,
             )
@@ -140,14 +121,20 @@ class Predict:
                 if max_paddle_area < paddle_area:
                     max_paddle_area = paddle_area
                     bb_boxes_pad = stats_resize[paddle_idx][: cv2.CC_STAT_AREA].tolist()
+                    bb_boxes_pad = [
+                        bb_boxes_pad[0],
+                        bb_boxes_pad[1],
+                        bb_boxes_pad[0] + bb_boxes_pad[2],
+                        bb_boxes_pad[1] + bb_boxes_pad[3],
+                    ]
                     mask = pred_m_pad_resize
 
         return mask, max_paddle_area, bb_boxes_pad
 
     def add_center_and_area_to_list(self, paddle_area, bb_boxes_pad):
         if bb_boxes_pad is not None:
-            paddle_center_x = bb_boxes_pad[0] + bb_boxes_pad[2] / 2
-            paddle_center_y = bb_boxes_pad[1] + bb_boxes_pad[3] / 2
+            paddle_center_x = (bb_boxes_pad[0] + bb_boxes_pad[2]) / 2
+            paddle_center_y = (bb_boxes_pad[1] + bb_boxes_pad[3]) / 2
             self.paddle_center_list.append((self.frame_count, paddle_center_x, paddle_center_y))
             self.paddle_area_list.append((self.frame_count, paddle_area))
             return [paddle_center_x, paddle_center_y]
@@ -346,12 +333,11 @@ class Predict:
         score_keypoint = None
         pose_result = pose_results[0]
 
-        assert pose_result.boxes.xywh.shape[0] >= 1
+        assert pose_result.boxes.xyxy.shape[0] >= 1
         assert pose_result.keypoints.data.shape[0] >= 1
         boxes_max_conf = torch.argmax(pose_result.boxes.conf)
         pose_result_boxes = pose_result.boxes[boxes_max_conf]
-        bb_boxes_person = pose_result_boxes.xywh[0].cpu().tolist()  # 用pose的bbox當作GT的bbox
-        bb_boxes_person = yolo_to_coco_boxes(bb_boxes_person)
+        bb_boxes_person = pose_result_boxes.xyxy[0].cpu().tolist()  # 用pose的bbox當作GT的bbox
 
         pose_max_conf = torch.argmax(torch.max(pose_result.keypoints.conf, dim=-1).values)
         pose_result_keypoints = pose_result.keypoints[pose_max_conf]
@@ -374,7 +360,6 @@ class Predict:
         self, bb_boxes_person, keypoint, score_keypoint, bb_boxes_pad, score_pad, paddle_center, paddle_area
     ):
         # bbox gt = yolo detect
-        # bb_boxes_person 的格式是 xywh，其中xy在最左上角
         if bb_boxes_person is not None:
             image_id = int(f"{self.input_video_stroke_id}{self.input_video_id:03d}{self.frame_count:05d}")
             data = {
@@ -387,34 +372,29 @@ class Predict:
             }
             self.person_bbox_dict["images"].append(data)
 
+            # annotation
+            widths = bb_boxes_person[2] - bb_boxes_person[0]
+            heights = bb_boxes_person[3] - bb_boxes_person[1]
+            areas = widths * heights
+            assert areas >= 0
             data = {
                 "id": int(f"{image_id}001"),
                 "image_id": image_id,
                 "category_id": 1,
                 "action_ids": [self.input_video_stroke_id],
                 "person_id": 1,
-                "bbox": bb_boxes_person,
-                "area": bb_boxes_person[2] * bb_boxes_person[3],
+                "bbox": bb_boxes_person,  # xyxy
+                "area": areas,
                 "keypoints": [],
                 "iscrowd": 0,
             }
             self.person_bbox_dict["annotations"].append(data)
 
-            # yolo detect
-            if self.stage == "test":
-                data = {
-                    "image_id": image_id,
-                    "category_id": 0,
-                    "bbox": bb_boxes_person,
-                    "score": score_keypoint,
-                }
-                self.person_yolo_detect_list.append(data)
-
             # keypoint
             data = {
                 "image_id": image_id,
                 "category_id": 0,
-                "bbox": bb_boxes_person,
+                "bbox": bb_boxes_person,  # xyxy
                 "keypoints": keypoint,
                 "score": score_keypoint,
             }
@@ -426,7 +406,7 @@ class Predict:
             data = {
                 "image_id": image_id,
                 "category_id": 0,
-                "bbox": bb_boxes_pad,
+                "bbox": bb_boxes_pad,  # xyxy
                 "score": score_pad,
                 "center": paddle_center,
                 "area": paddle_area,
@@ -438,9 +418,6 @@ class Predict:
             json.dump(self.person_bbox_dict, f, ensure_ascii=False, indent=4)
         with open(os.path.join(self.anno_dir, self.person_keypoint_filename), "w", encoding="utf-8") as f:
             json.dump(self.person_keypoint_list, f, ensure_ascii=False, indent=4)
-        if self.stage == "test":
-            with open(os.path.join(self.anno_dir, self.person_yolo_detect_filename), "w", encoding="utf-8") as f:
-                json.dump(self.person_yolo_detect_list, f, ensure_ascii=False, indent=4)
         with open(os.path.join(self.anno_dir, self.object_detection_filename), "w", encoding="utf-8") as f:
             json.dump(self.object_detection_list, f, ensure_ascii=False, indent=4)
 

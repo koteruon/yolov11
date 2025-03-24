@@ -231,3 +231,4 @@ fabric.properties
 hit_datasets/*
 runs/*
 yolo_datasets/*
+hit_datasets_old/*

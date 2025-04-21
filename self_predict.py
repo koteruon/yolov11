@@ -472,7 +472,7 @@ class Predict:
 
             # seg the frame
             seg_frame, all_frame, bb_boxes_pad, score_pad, paddle_center, paddle_area = self.seg_frame(
-                seg_frame, pose_frame
+                seg_frame, pose_frame.copy()
             )
             seg_no_analyze_frame = seg_frame.copy()
             all_no_analyze_frame = all_frame.copy()

@@ -62,7 +62,16 @@ class Predict:
         self.object_detection_filename = f"stroke_postures_train_object_detection.json"
         self.object_detection_list = []
 
-    def load_video_data(self, input_video_path, pose_output_video_path, seg_output_video_path):
+    def load_video_data(
+        self,
+        input_video_path,
+        pose_output_video_path,
+        pose_white_bg_output_video_path,
+        seg_output_video_path,
+        seg_no_analyze_output_video_path,
+        all_output_video_path,
+        all_no_analyze_output_video_path,
+    ):
         # Get filename and video id
         self.input_video_filename, _ = os.path.splitext(os.path.basename(input_video_path))
         self.input_video_stroke_name, self.input_video_id = self.input_video_filename.rsplit("_", 1)
@@ -76,7 +85,17 @@ class Predict:
         self.fps = self.cap.get(cv2.CAP_PROP_FPS)
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         self.pose_out = cv2.VideoWriter(pose_output_video_path, fourcc, self.fps, (self.frame_width, self.frame_height))
+        self.pose_white_bg_out = cv2.VideoWriter(
+            pose_white_bg_output_video_path, fourcc, self.fps, (self.frame_width, self.frame_height)
+        )
         self.seg_out = cv2.VideoWriter(seg_output_video_path, fourcc, self.fps, (self.frame_width, self.frame_height))
+        self.seg_no_analyze_out = cv2.VideoWriter(
+            seg_no_analyze_output_video_path, fourcc, self.fps, (self.frame_width, self.frame_height)
+        )
+        self.all_out = cv2.VideoWriter(all_output_video_path, fourcc, self.fps, (self.frame_width, self.frame_height))
+        self.all_no_analyze_out = cv2.VideoWriter(
+            all_no_analyze_output_video_path, fourcc, self.fps, (self.frame_width, self.frame_height)
+        )
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))  # 獲取影片總幀數
 
         # Tracking variables
@@ -143,7 +162,7 @@ class Predict:
             self.paddle_area_list.append((self.frame_count, None))
             return [None, None]
 
-    def seg_frame(self, frame):
+    def seg_frame(self, frame, frame_with_pose):
         """Process a single frame using the YOLO model."""
         bb_boxes_pad = None
         score_pad = None
@@ -156,9 +175,10 @@ class Predict:
                 masks = r.masks.data.cpu().numpy()
                 mask, paddle_area, bb_boxes_pad = self.calculate_biggest_pad_mask(masks)
                 frame = self.draw_pad_mask_on_frame(frame, mask, bb_boxes_pad)
+                frame_with_pose = self.draw_pad_mask_on_frame(frame_with_pose, mask, bb_boxes_pad)
         paddle_center = self.add_center_and_area_to_list(paddle_area, bb_boxes_pad)
 
-        return frame, bb_boxes_pad, score_pad, paddle_center, paddle_area
+        return frame, frame_with_pose, bb_boxes_pad, score_pad, paddle_center, paddle_area
 
     def clear_and_set_plt_axes(self, x_min, x_max):
         # clear every axis
@@ -253,7 +273,7 @@ class Predict:
         )
         return frame
 
-    def draw_plt(self, frame):
+    def draw_plt(self, frame, frame_with_pose):
         # Determine x-axis limits for area plot
         x_min = max(0, self.frame_count - 120)
         x_max = self.frame_count
@@ -276,15 +296,17 @@ class Predict:
 
         # Convert the plot to an image
         frame = self.convert_plot_to_image(frame)
+        frame_with_pose = self.convert_plot_to_image(frame_with_pose)
 
         # Draw circles on the frame
         color_bgrs = [(0, max(c - 30, 0), c) for c in color_components]
         for center, color_bgr in zip(centers, color_bgrs):
             cv2.circle(frame, tuple(center), 5, tuple(map(int, color_bgr)), -1)
+            cv2.circle(frame_with_pose, tuple(center), 5, tuple(map(int, color_bgr)), -1)
 
-        return frame
+        return frame, frame_with_pose
 
-    def plot_pose(self, ori_left_frame, pose_result_names, pose_result_boxes, pose_result_keypoints):
+    def plot_pose(self, ori_left_frame, pose_result_names, pose_result_boxes, pose_result_keypoints, has_bbox=True):
         img = ori_left_frame  # 1080*960
         img_shape = img.shape[:2]
         names = pose_result_names
@@ -298,17 +320,20 @@ class Predict:
         )
 
         # Plot Detect results
-        pred_boxes = pose_result_boxes
-        c, conf, id = int(pred_boxes.cls), float(pred_boxes.conf), None
-        name = ("" if id is None else f"id:{id} ") + names[c]
-        label = f"{name} {conf:.2f}" if conf else name
-        box = pred_boxes.xyxy.squeeze()
-        annotator.box_label(
-            box,
-            label,
-            color=colors(c, True),
-            rotated=False,
-        )
+        if has_bbox:
+            pred_boxes = pose_result_boxes
+            # c, conf, id = int(pred_boxes.cls), float(pred_boxes.conf), None
+            # name = ("" if id is None else f"id:{id} ") + names[c]
+            # label = f"{name} {conf:.2f}" if conf else name
+            c = 9  # (189, 0, 255): 紫色（Purple）
+            label = ""
+            box = pred_boxes.xyxy.squeeze()
+            annotator.box_label(
+                box,
+                label,
+                color=colors(c, True),
+                rotated=False,
+            )
 
         # Plot Pose results
         for i, k in enumerate(reversed(pose_result_keypoints.data)):
@@ -345,10 +370,17 @@ class Predict:
         score_keypoint = torch.max(pose_result_keypoints.conf).item()
 
         pose_result_names = pose_result.names
-        left_frame = self.plot_pose(ori_left_frame, pose_result_names, pose_result_boxes, pose_result_keypoints)
-        frame[:, : self.frame_width // 2] = left_frame
+        pose_left_frame = self.plot_pose(ori_left_frame, pose_result_names, pose_result_boxes, pose_result_keypoints)
+        frame[:, : self.frame_width // 2] = pose_left_frame
 
-        return frame, bb_boxes_person, keypoint, score_keypoint
+        white_frame = np.full_like(frame, 255)
+        left_white_frame = white_frame[:, : self.frame_width // 2]
+        pose_left_white_frame = self.plot_pose(
+            left_white_frame, pose_result_names, None, pose_result_keypoints, has_bbox=False
+        )
+        white_frame[:, : self.frame_width // 2] = pose_left_white_frame
+
+        return frame, white_frame, bb_boxes_person, keypoint, score_keypoint
 
     def save_ori_frame(self, frame):
         """Save the original frame."""
@@ -436,17 +468,25 @@ class Predict:
             seg_frame = frame.copy()
 
             # pose the frame
-            pose_frame, bb_boxes_person, keypoint, score_keypoint = self.pose_frame(pose_frame)
+            pose_frame, pose_white_frame, bb_boxes_person, keypoint, score_keypoint = self.pose_frame(pose_frame)
 
             # seg the frame
-            seg_frame, bb_boxes_pad, score_pad, paddle_center, paddle_area = self.seg_frame(seg_frame)
+            seg_frame, all_frame, bb_boxes_pad, score_pad, paddle_center, paddle_area = self.seg_frame(
+                seg_frame, pose_frame
+            )
+            seg_no_analyze_frame = seg_frame.copy()
+            all_no_analyze_frame = all_frame.copy()
 
             # draw plot
-            seg_frame = self.draw_plt(seg_frame)
+            seg_frame, all_frame = self.draw_plt(seg_frame, all_frame)
 
             # Write the frame to the output video
             self.pose_out.write(pose_frame)
+            self.pose_white_bg_out.write(pose_white_frame)
             self.seg_out.write(seg_frame)
+            self.seg_no_analyze_out.write(seg_no_analyze_frame)
+            self.all_out.write(all_frame)
+            self.all_no_analyze_out.write(all_no_analyze_frame)
 
             # append annotation data
             self.append_annotation_data(
@@ -462,7 +502,11 @@ class Predict:
         # Release resources
         self.cap.release()
         self.pose_out.release()
+        self.pose_white_bg_out.release()
         self.seg_out.release()
+        self.seg_no_analyze_out.release()
+        self.all_out.release()
+        self.all_no_analyze_out.release()
 
     def create_dataset_dir(self):
         base_dir = "hit_datasets"
@@ -490,11 +534,29 @@ if __name__ == "__main__":
     video_names = os.listdir(video_dir)
     for video_name in video_names:
         input_video_path = f"inference/videos/{video_name}"
-        pose_output_video_path = f"inference/output/videos/pose_{video_name}"
-        seg_output_video_path = f"inference/output/videos/seg_{video_name}"
+        pose_output_video_path = f"inference/output/videos/pose_{video_name}"  # 人體骨架含物件框
+        pose_white_bg_output_video_path = (
+            f"inference/output/videos/pose_white_bg_{video_name}"  # 人體骨架不含物件框(背景空白)
+        )
+        seg_output_video_path = f"inference/output/videos/seg_{video_name}"  # 球拍面積分割含分析
+        seg_no_analyze_output_video_path = (
+            f"inference/output/videos/seg_no_analyze_{video_name}"  # 球拍面積分割不含分析
+        )
+        all_output_video_path = f"inference/output/videos/all_{video_name}"  # 結合人體骨架和球拍面積含分析
+        all_no_analyze_output_video_path = (
+            f"inference/output/videos/all_no_analyze_{video_name}"  # 結合人體骨架和球拍面積不含分析
+        )
 
         # Create Predict instance and process the video
         predictor = Predict(seg_model_path)
-        predictor.load_video_data(input_video_path, pose_output_video_path, seg_output_video_path)
+        predictor.load_video_data(
+            input_video_path,
+            pose_output_video_path,
+            pose_white_bg_output_video_path,
+            seg_output_video_path,
+            seg_no_analyze_output_video_path,
+            all_output_video_path,
+            all_no_analyze_output_video_path,
+        )
         predictor.create_dataset_dir()
         predictor.process_video()

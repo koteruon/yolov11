@@ -19,7 +19,8 @@ torch.cuda.manual_seed_all(cur_seed)
 
 frame_nbr = 32
 padding = frame_nbr // 2
-split_radio = 0.4
+split_radio_train = 0.6 # 0.2
+split_radio_test = 0.4
 
 stroke_id_map = {
     1: {"stroke_list": ["backhand_chop"], "videos": [None]},
@@ -48,9 +49,12 @@ for select_frame in tqdm(select_frames):
             # 將範圍分為訓練集 (train) 和測試集 (test)，比例為 8:2 且均勻分配
             num_ranges = len(df)
             # train_indices = np.random.choice(range(num_ranges), size=int(num_ranges * split_radio), replace=False)
-            train_indices = list(range(int(num_ranges * split_radio)))
-            test_indices = [i for i in range(num_ranges) if i not in train_indices]
-            df["category"] = ["train" if i in train_indices else "test" for i in range(num_ranges)]
+            train_indices = list(range(int(num_ranges * split_radio_train)))
+            no_test_indices = list(range(int(num_ranges * (1 - split_radio_test))))
+            test_indices = [i for i in range(num_ranges) if i not in no_test_indices]
+            df["category"] = [
+                "train" if i in train_indices else "test" if i in test_indices else "other" for i in range(num_ranges)
+            ]
             # 儲存nonpadding的
             df["start_range"] = df["start_frame"]
             df["end_range"] = df["end_frame"]
@@ -78,6 +82,8 @@ def is_in_range(df, frame_number, stroke_video_info, is_annotation=False):
             result.append("test_other")
         if result[0] == "test" and frame_number <= df["last_train_end"].iloc[0]:
             result.append("train_other")
+        if result[0] == "other":
+            result.remove("other")
         return result
     # 其他類別
     if is_annotation:
@@ -222,8 +228,8 @@ for filename in tqdm(folders):
                         merge_train_other_data.append(annotation)
                     elif category == "test_other":
                         annotation["action_ids"][0] = 9
-                        # merged_test_data["annotations"].append(annotation)
-                        merge_test_other_data.append(annotation)
+                        merged_test_data["annotations"].append(annotation)
+                        # merge_test_other_data.append(annotation)
                     else:
                         raise ValueError(f"未預期的類別：{category}")
             train_data_samples = train_data_len  # // len(stroke_id_map)
@@ -231,12 +237,11 @@ for filename in tqdm(folders):
             train_indices = np.round(np.linspace(0, merge_train_other_data_len - 1, train_data_samples)).astype(int)
             selected_train_other_data = [merge_train_other_data[i] for i in train_indices]
             merged_train_data["annotations"].extend(selected_train_other_data)
-            test_data_samples = test_data_len // len(stroke_id_map)
-            merge_test_other_data_len = len(merge_test_other_data)
-            test_indices = np.round(np.linspace(0, merge_test_other_data_len - 1, test_data_samples)).astype(int)
-            selected_test_other_data = [merge_test_other_data[i] for i in test_indices]
-            merged_test_data["annotations"].extend(selected_test_other_data)
-
+            # test_data_samples = test_data_len // len(stroke_id_map)
+            # merge_test_other_data_len = len(merge_test_other_data)
+            # test_indices = np.round(np.linspace(0, merge_test_other_data_len - 1, test_data_samples)).astype(int)
+            # selected_test_other_data = [merge_test_other_data[i] for i in test_indices]
+            # merged_test_data["annotations"].extend(selected_test_other_data)
             # images
             images = datas["images"]
             for image in images:

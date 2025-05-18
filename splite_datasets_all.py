@@ -19,7 +19,7 @@ torch.cuda.manual_seed_all(cur_seed)
 
 frame_nbr = 32
 padding = frame_nbr // 2
-split_radio_train = 0.6 # 0.2
+split_radio_train = 0.2  # 0.2
 split_radio_test = 0.4
 
 stroke_id_map = {
@@ -348,14 +348,33 @@ def one_hot_vector(labels):
     return encoder.fit_transform(labels)
 
 
-def split_dataset(train_skes_joints, train_labels, valid_skes_joints, valid_labels):
+def split_dataset(
+    train_skes_joints,
+    train_labels,
+    valid_skes_joints,
+    valid_labels,
+    train_paths,
+    train_timestamps,
+    test_paths,
+    test_timestamps,
+):
     train_x = train_skes_joints
     train_y = one_hot_vector(train_labels)
     test_x = valid_skes_joints
     test_y = one_hot_vector(valid_labels)
 
     save_name = "./hit_datasets/annotations/stroke_posture.npz"
-    np.savez(save_name, x_train=train_x, y_train=train_y, x_test=test_x, y_test=test_y)
+    np.savez(
+        save_name,
+        x_train=train_x,
+        y_train=train_y,
+        x_test=test_x,
+        y_test=test_y,
+        train_paths=train_paths,
+        train_timestamps=train_timestamps,
+        test_paths=test_paths,
+        test_timestamps=test_timestamps,
+    )
 
     print(f"輸出檔案：{save_name}")
 
@@ -365,6 +384,8 @@ stroke_posture_test_gt_path = "./hit_datasets/annotations/stroke_postures_test_g
 stroke_posture_train_person_bbox_kpts = "./hit_datasets/annotations/stroke_postures_train_person_bbox_kpts.json"
 stroke_posture_test_person_bbox_kpts = "./hit_datasets/annotations/stroke_postures_test_person_bbox_kpts.json"
 
+train_paths = []
+train_timestamps = []
 train_ske_joints = []
 train_labels = []
 with open(stroke_posture_train_person_bbox_kpts, "r", encoding="utf-8") as f_person:
@@ -381,6 +402,15 @@ with open(stroke_posture_train_person_bbox_kpts, "r", encoding="utf-8") as f_per
     with open(stroke_posture_train_gt_path, "r", encoding="utf-8") as f_gt:
         try:
             datas = json.load(f_gt)
+            images = datas["images"]
+            images_map = {}
+            for image in tqdm(images):
+                image_id = image["id"]
+                movie = image["movie"]
+                path = "data/stroke_postures/videos/" + movie
+                timestamp = int(image["timestamp"])
+                images_map[image_id] = (path, timestamp)
+
             annotations = datas["annotations"]
             for annotation in tqdm(annotations):
                 image_id = annotation["image_id"]
@@ -395,9 +425,14 @@ with open(stroke_posture_train_person_bbox_kpts, "r", encoding="utf-8") as f_per
                 ske_joints = ske_joints.reshape(frame_nbr, -1)
                 train_ske_joints.append(ske_joints)
                 train_labels.append(action_id)
+                path, timestamp = images_map[image_id]
+                train_paths.append(path)
+                train_timestamps.append(timestamp)
         except json.JSONDecodeError as e:
             print(f"讀取錯誤：{filename} - {e}")
 
+test_paths = []
+test_timestamps = []
 test_ske_joints = []
 test_labels = []
 with open(stroke_posture_test_person_bbox_kpts, "r", encoding="utf-8") as f_person:
@@ -414,6 +449,15 @@ with open(stroke_posture_test_person_bbox_kpts, "r", encoding="utf-8") as f_pers
     with open(stroke_posture_test_gt_path, "r", encoding="utf-8") as f_gt:
         try:
             datas = json.load(f_gt)
+            images = datas["images"]
+            images_map = {}
+            for image in tqdm(images):
+                image_id = image["id"]
+                movie = image["movie"]
+                path = "data/stroke_postures/videos/" + movie
+                timestamp = int(image["timestamp"])
+                images_map[image_id] = (path, timestamp)
+
             annotations = datas["annotations"]
             for annotation in tqdm(annotations):
                 image_id = annotation["image_id"]
@@ -428,7 +472,19 @@ with open(stroke_posture_test_person_bbox_kpts, "r", encoding="utf-8") as f_pers
                 ske_joints = ske_joints.reshape(frame_nbr, -1)
                 test_ske_joints.append(ske_joints)
                 test_labels.append(action_id)
+                path, timestamp = images_map[image_id]
+                test_paths.append(path)
+                test_timestamps.append(timestamp)
         except json.JSONDecodeError as e:
             print(f"讀取錯誤：{filename} - {e}")
 
-split_dataset(train_ske_joints, train_labels, test_ske_joints, test_labels)
+split_dataset(
+    train_ske_joints,
+    train_labels,
+    test_ske_joints,
+    test_labels,
+    train_paths,
+    train_timestamps,
+    test_paths,
+    test_timestamps,
+)

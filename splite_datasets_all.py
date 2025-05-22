@@ -19,8 +19,8 @@ torch.cuda.manual_seed_all(cur_seed)
 
 frame_nbr = 32
 padding = frame_nbr // 2
-split_radio_train = 0.2  # 0.2
-split_radio_test = 0.4
+split_radio_train = 0.8
+split_radio_test = 0.2
 
 stroke_id_map = {
     1: {"stroke_list": ["backhand_chop"], "videos": [None]},

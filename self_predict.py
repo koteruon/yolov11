@@ -69,6 +69,7 @@ class Predict:
         pose_white_bg_output_video_path,
         seg_output_video_path,
         seg_no_analyze_output_video_path,
+        seg_no_analyze_no_bbox_output_video_path,
         all_output_video_path,
         all_no_analyze_output_video_path,
     ):
@@ -92,6 +93,9 @@ class Predict:
         self.seg_no_analyze_out = cv2.VideoWriter(
             seg_no_analyze_output_video_path, fourcc, self.fps, (self.frame_width, self.frame_height)
         )
+        self.seg_no_analyze_no_bbox_out = cv2.VideoWriter(
+            seg_no_analyze_no_bbox_output_video_path, fourcc, self.fps, (self.frame_width, self.frame_height)
+        )
         self.all_out = cv2.VideoWriter(all_output_video_path, fourcc, self.fps, (self.frame_width, self.frame_height))
         self.all_no_analyze_out = cv2.VideoWriter(
             all_no_analyze_output_video_path, fourcc, self.fps, (self.frame_width, self.frame_height)
@@ -103,7 +107,7 @@ class Predict:
         self.paddle_center_list = []
         self.paddle_area_list = []
 
-    def draw_pad_mask_on_frame(self, frame, pred_m_pad, bb_boxes_pad):
+    def draw_pad_mask_on_frame(self, frame_no_bbox, frame, pred_m_pad, bb_boxes_pad):
         if bb_boxes_pad is not None:
             # bbox
             frame = cv2.rectangle(
@@ -117,8 +121,9 @@ class Predict:
             colored_mask = np.zeros_like(frame, dtype=np.uint8)
             colored_mask[pred_m_pad == 1] = [255, 0, 0]
             frame = cv2.addWeighted(frame, 1, colored_mask, 0.8, 0)
+            frame_no_bbox = cv2.addWeighted(frame_no_bbox, 1, colored_mask, 0.8, 0)
 
-        return frame
+        return frame_no_bbox, frame
 
     def calculate_biggest_pad_mask(self, masks):
         mask = None
@@ -168,17 +173,22 @@ class Predict:
         score_pad = None
         paddle_area = -1
 
+        frame_no_bbox = frame.copy()
+        frame_with_pose_no_bbox = frame_with_pose.copy()
+
         results = self.seg_model(frame, verbose=self.seg_verbose)
         for r in results:
             if r.masks is not None:
                 score_pad = torch.max(r.boxes.conf).item()
                 masks = r.masks.data.cpu().numpy()
                 mask, paddle_area, bb_boxes_pad = self.calculate_biggest_pad_mask(masks)
-                frame = self.draw_pad_mask_on_frame(frame, mask, bb_boxes_pad)
-                frame_with_pose = self.draw_pad_mask_on_frame(frame_with_pose, mask, bb_boxes_pad)
+                frame_no_bbox, frame = self.draw_pad_mask_on_frame(frame_no_bbox, frame, mask, bb_boxes_pad)
+                frame_with_pose_no_bbox, frame_with_pose = self.draw_pad_mask_on_frame(
+                    frame_with_pose_no_bbox, frame_with_pose, mask, bb_boxes_pad
+                )
         paddle_center = self.add_center_and_area_to_list(paddle_area, bb_boxes_pad)
 
-        return frame, frame_with_pose, bb_boxes_pad, score_pad, paddle_center, paddle_area
+        return frame_no_bbox, frame, frame_with_pose, bb_boxes_pad, score_pad, paddle_center, paddle_area
 
     def clear_and_set_plt_axes(self, x_min, x_max):
         # clear every axis
@@ -273,7 +283,7 @@ class Predict:
         )
         return frame
 
-    def draw_plt(self, frame, frame_with_pose):
+    def draw_plt(self, frame_no_bbox, frame, frame_with_pose):
         # Determine x-axis limits for area plot
         x_min = max(0, self.frame_count - 120)
         x_max = self.frame_count
@@ -295,16 +305,18 @@ class Predict:
         self.draw_center_axes(centers, color_components)
 
         # Convert the plot to an image
+        frame_no_bbox = self.convert_plot_to_image(frame_no_bbox)
         frame = self.convert_plot_to_image(frame)
         frame_with_pose = self.convert_plot_to_image(frame_with_pose)
 
         # Draw circles on the frame
         color_bgrs = [(0, max(c - 30, 0), c) for c in color_components]
         for center, color_bgr in zip(centers, color_bgrs):
+            cv2.circle(frame_no_bbox, tuple(center), 5, tuple(map(int, color_bgr)), -1)
             cv2.circle(frame, tuple(center), 5, tuple(map(int, color_bgr)), -1)
             cv2.circle(frame_with_pose, tuple(center), 5, tuple(map(int, color_bgr)), -1)
 
-        return frame, frame_with_pose
+        return frame_no_bbox, frame, frame_with_pose
 
     def plot_pose(self, ori_left_frame, pose_result_names, pose_result_boxes, pose_result_keypoints, has_bbox=True):
         img = ori_left_frame  # 1080*960
@@ -471,20 +483,21 @@ class Predict:
             pose_frame, pose_white_frame, bb_boxes_person, keypoint, score_keypoint = self.pose_frame(pose_frame)
 
             # seg the frame
-            seg_frame, all_frame, bb_boxes_pad, score_pad, paddle_center, paddle_area = self.seg_frame(
-                seg_frame, pose_frame.copy()
+            seg_no_bbox_frame, seg_frame, all_frame, bb_boxes_pad, score_pad, paddle_center, paddle_area = (
+                self.seg_frame(seg_frame, pose_frame.copy())
             )
             seg_no_analyze_frame = seg_frame.copy()
             all_no_analyze_frame = all_frame.copy()
 
             # draw plot
-            seg_frame, all_frame = self.draw_plt(seg_frame, all_frame)
+            seg_no_bbox_frame, seg_frame, all_frame = self.draw_plt(seg_no_bbox_frame, seg_frame, all_frame)
 
             # Write the frame to the output video
             self.pose_out.write(pose_frame)
             self.pose_white_bg_out.write(pose_white_frame)
             self.seg_out.write(seg_frame)
             self.seg_no_analyze_out.write(seg_no_analyze_frame)
+            self.seg_no_analyze_no_bbox_out.write(seg_no_bbox_frame)
             self.all_out.write(all_frame)
             self.all_no_analyze_out.write(all_no_analyze_frame)
 
@@ -505,6 +518,7 @@ class Predict:
         self.pose_white_bg_out.release()
         self.seg_out.release()
         self.seg_no_analyze_out.release()
+        self.seg_no_analyze_no_bbox_out.release()
         self.all_out.release()
         self.all_no_analyze_out.release()
 
@@ -542,6 +556,9 @@ if __name__ == "__main__":
         seg_no_analyze_output_video_path = (
             f"inference/output/videos/seg_no_analyze_{video_name}"  # 球拍面積分割不含分析
         )
+        seg_no_analyze_no_bbox_output_video_path = (
+            f"inference/output/videos/seg_no_analyze_no_bbox_{video_name}"  # 球拍面積分割不含分析不含bbox
+        )
         all_output_video_path = f"inference/output/videos/all_{video_name}"  # 結合人體骨架和球拍面積含分析
         all_no_analyze_output_video_path = (
             f"inference/output/videos/all_no_analyze_{video_name}"  # 結合人體骨架和球拍面積不含分析
@@ -555,6 +572,7 @@ if __name__ == "__main__":
             pose_white_bg_output_video_path,
             seg_output_video_path,
             seg_no_analyze_output_video_path,
+            seg_no_analyze_no_bbox_output_video_path,
             all_output_video_path,
             all_no_analyze_output_video_path,
         )

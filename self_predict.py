@@ -11,6 +11,20 @@ from tqdm import tqdm
 from ultralytics import YOLO
 from ultralytics.utils.plotting import Annotator, colors
 
+frame_nbr = 32
+padding = frame_nbr // 2
+
+pred_stroke_start_frame = {
+    "backhand_chop_01": 1213,
+    "backhand_flick_01": 1198,
+    "backhand_push_01": 1613,
+    "backhand_topspin_01": 910,
+    "forehand_chop_01": 1098,
+    "forehand_drive_01": 624,
+    "forehand_smash_01": 1108,
+    "forehand_topspin_01": 1630,
+}
+
 
 class Predict:
     def __init__(self, seg_model_path=None):
@@ -72,6 +86,7 @@ class Predict:
         seg_no_analyze_no_bbox_output_video_path,
         all_output_video_path,
         all_no_analyze_output_video_path,
+        all_no_analyze_no_area_output_video_path,
     ):
         # Get filename and video id
         self.input_video_filename, _ = os.path.splitext(os.path.basename(input_video_path))
@@ -100,6 +115,9 @@ class Predict:
         self.all_no_analyze_out = cv2.VideoWriter(
             all_no_analyze_output_video_path, fourcc, self.fps, (self.frame_width, self.frame_height)
         )
+        self.all_no_analyze_no_area_out = cv2.VideoWriter(
+            all_no_analyze_no_area_output_video_path, fourcc, self.fps, (self.frame_width, self.frame_height)
+        )
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))  # 獲取影片總幀數
 
         # Tracking variables
@@ -107,11 +125,21 @@ class Predict:
         self.paddle_center_list = []
         self.paddle_area_list = []
 
-    def draw_pad_mask_on_frame(self, frame_no_bbox, frame, pred_m_pad, bb_boxes_pad):
+        # plot init
+        self.pred_start_frame = pred_stroke_start_frame[self.input_video_filename]
+
+    def draw_pad_mask_on_frame(self, frame_no_bbox, frame_no_area, frame, pred_m_pad, bb_boxes_pad):
         if bb_boxes_pad is not None:
             # bbox
             frame = cv2.rectangle(
                 frame,
+                bb_boxes_pad[:2],
+                bb_boxes_pad[2:],
+                (255, 0, 0),
+                2,
+            )
+            frame_no_area = cv2.rectangle(
+                frame_no_area,
                 bb_boxes_pad[:2],
                 bb_boxes_pad[2:],
                 (255, 0, 0),
@@ -123,7 +151,7 @@ class Predict:
             frame = cv2.addWeighted(frame, 1, colored_mask, 0.8, 0)
             frame_no_bbox = cv2.addWeighted(frame_no_bbox, 1, colored_mask, 0.8, 0)
 
-        return frame_no_bbox, frame
+        return frame_no_bbox, frame_no_area, frame
 
     def calculate_biggest_pad_mask(self, masks):
         mask = None
@@ -174,7 +202,9 @@ class Predict:
         paddle_area = -1
 
         frame_no_bbox = frame.copy()
+        frame_no_area = frame.copy()
         frame_with_pose_no_bbox = frame_with_pose.copy()
+        frame_with_pose_no_area = frame_with_pose.copy()
 
         results = self.seg_model(frame, verbose=self.seg_verbose)
         for r in results:
@@ -182,20 +212,33 @@ class Predict:
                 score_pad = torch.max(r.boxes.conf).item()
                 masks = r.masks.data.cpu().numpy()
                 mask, paddle_area, bb_boxes_pad = self.calculate_biggest_pad_mask(masks)
-                frame_no_bbox, frame = self.draw_pad_mask_on_frame(frame_no_bbox, frame, mask, bb_boxes_pad)
-                frame_with_pose_no_bbox, frame_with_pose = self.draw_pad_mask_on_frame(
-                    frame_with_pose_no_bbox, frame_with_pose, mask, bb_boxes_pad
+                frame_no_bbox, frame_no_area, frame = self.draw_pad_mask_on_frame(
+                    frame_no_bbox, frame_no_area, frame, mask, bb_boxes_pad
+                )
+                frame_with_pose_no_bbox, frame_with_pose_no_area, frame_with_pose = self.draw_pad_mask_on_frame(
+                    frame_with_pose_no_bbox, frame_with_pose_no_area, frame_with_pose, mask, bb_boxes_pad
                 )
         paddle_center = self.add_center_and_area_to_list(paddle_area, bb_boxes_pad)
 
-        return frame_no_bbox, frame, frame_with_pose, bb_boxes_pad, score_pad, paddle_center, paddle_area
+        return (
+            frame_no_bbox,
+            frame,
+            frame_with_pose,
+            frame_with_pose_no_area,
+            bb_boxes_pad,
+            score_pad,
+            paddle_center,
+            paddle_area,
+        )
+
+        # clear every axis
 
     def clear_and_set_plt_axes(self, x_min, x_max):
-        # clear every axis
         self.area_axes.cla()
         self.center_axes.cla()
 
         # Configure paddle area data
+        self.area_axes.set_xlim((x_min, x_max))
         self.area_axes.set_xlim((x_min, x_max))
         self.area_axes.set_ylim((0, 5000))
         self.area_axes.set_xlabel("Frame")
@@ -221,9 +264,9 @@ class Predict:
         )
         self.center_axes.legend(handles=[paddle_line])
 
-    def draw_area_axes(self, x_min, x_max):
+    def draw_area_axes(self, draw_x_min, draw_x_max, x_min, x_max):
         # Plot paddle area data
-        x_data = range(x_min, x_max)
+        x_data = range(draw_x_min, draw_x_max)
         y_data = self.paddle_area_list[x_min : x_max + 1]
         y_data = np.array(y_data, dtype=float)[:, 1]
         nan_mask = np.isnan(y_data)
@@ -237,14 +280,9 @@ class Predict:
         color_rgbs_norm = np.array([(c / 255, max(c - 30, 0) / 255, 0 / 255) for c in color_components])
         self.center_axes.scatter(centers[:, 0], self.frame_height - centers[:, 1], c=color_rgbs_norm, marker="o", s=50)
 
-    def calculate_paddle_centers(self):
-        # Determine frame range for paddle center plot
-        frame_min_pad = max(0, len(self.paddle_center_list) - self.frame_count_range)
-
+    def calculate_paddle_centers(self, min_pad, max_pad):
         # Extract the paddle center data
-        paddle_centers = np.array(
-            self.paddle_center_list[frame_min_pad : min(self.frame_count, len(self.paddle_center_list))]
-        )
+        paddle_centers = np.array(self.paddle_center_list[min_pad:max_pad])
         centers = paddle_centers[:, 1:3]
         centers = centers.astype(float)
 
@@ -284,21 +322,27 @@ class Predict:
         return frame
 
     def draw_plt(self, frame_no_bbox, frame, frame_with_pose):
+        shift = self.pred_start_frame - padding - 1 if self.frame_count >= self.pred_start_frame - padding else 0
+
         # Determine x-axis limits for area plot
-        x_min = max(0, self.frame_count - 120)
-        x_max = self.frame_count
+        x_max = self.frame_count - shift
+        x_min = max(0, x_max - 120)
 
         # Initialize plot
         self.clear_and_set_plt_axes(x_min, x_max)
 
         # Plot paddle area data
-        self.draw_area_axes(x_min, x_max)
+        self.draw_area_axes(x_min, x_max, x_min + shift, x_max + shift)
+
+        # Determine frame range for paddle center plot
+        max_pad = min(self.frame_count, len(self.paddle_center_list)) - shift
+        min_pad = max(0, max_pad - self.frame_count_range)
 
         # Calculate paddle centers
-        centers = self.calculate_paddle_centers()
+        centers = self.calculate_paddle_centers(min_pad + shift, max_pad + shift)
 
         # Calculate the color components
-        gradient = np.linspace(1, 0, len(centers))
+        gradient = np.linspace(1, 0, len(centers)) if len(centers) > 1 else np.array([0.0])
         color_components = (255 - (gradient * 255)).astype(int)
 
         # Scatter the valid centers
@@ -483,11 +527,19 @@ class Predict:
             pose_frame, pose_white_frame, bb_boxes_person, keypoint, score_keypoint = self.pose_frame(pose_frame)
 
             # seg the frame
-            seg_no_bbox_frame, seg_frame, all_frame, bb_boxes_pad, score_pad, paddle_center, paddle_area = (
-                self.seg_frame(seg_frame, pose_frame.copy())
-            )
+            (
+                seg_no_bbox_frame,
+                seg_frame,
+                all_frame,
+                all_no_area_frame,
+                bb_boxes_pad,
+                score_pad,
+                paddle_center,
+                paddle_area,
+            ) = self.seg_frame(seg_frame, pose_frame.copy())
             seg_no_analyze_frame = seg_frame.copy()
             all_no_analyze_frame = all_frame.copy()
+            all_no_analyze_no_area_frame = all_no_area_frame.copy()
 
             # draw plot
             seg_no_bbox_frame, seg_frame, all_frame = self.draw_plt(seg_no_bbox_frame, seg_frame, all_frame)
@@ -500,6 +552,7 @@ class Predict:
             self.seg_no_analyze_no_bbox_out.write(seg_no_bbox_frame)
             self.all_out.write(all_frame)
             self.all_no_analyze_out.write(all_no_analyze_frame)
+            self.all_no_analyze_no_area_out.write(all_no_analyze_no_area_frame)
 
             # append annotation data
             self.append_annotation_data(
@@ -521,6 +574,7 @@ class Predict:
         self.seg_no_analyze_no_bbox_out.release()
         self.all_out.release()
         self.all_no_analyze_out.release()
+        self.all_no_analyze_no_area_out.release()
 
     def create_dataset_dir(self):
         base_dir = "hit_datasets"
@@ -563,6 +617,9 @@ if __name__ == "__main__":
         all_no_analyze_output_video_path = (
             f"inference/output/videos/all_no_analyze_{video_name}"  # 結合人體骨架和球拍面積不含分析
         )
+        all_no_analyze_no_area_output_video_path = (
+            f"inference/output/videos/all_no_analyze_no_area_{video_name}"  # 結合人體骨架和球拍面積不含分析
+        )
 
         # Create Predict instance and process the video
         predictor = Predict(seg_model_path)
@@ -575,6 +632,7 @@ if __name__ == "__main__":
             seg_no_analyze_no_bbox_output_video_path,
             all_output_video_path,
             all_no_analyze_output_video_path,
+            all_no_analyze_no_area_output_video_path,
         )
         predictor.create_dataset_dir()
         predictor.process_video()

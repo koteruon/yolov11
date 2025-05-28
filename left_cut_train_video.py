@@ -1,4 +1,5 @@
 import os
+
 import cv2
 import pandas as pd
 from tqdm import tqdm
@@ -11,7 +12,14 @@ os.makedirs(output_dir, exist_ok=True)
 
 # 可接受的影片前綴清單
 video_prefixes = [
-    "all_", "pose_", "seg_", "all_no_analyze_", "seg_no_analyze_", "pose_white_bg_"
+    "all_",
+    "all_no_analyze_",
+    "all_no_analyze_no_area_",
+    "pose_",
+    "pose_white_bg_",
+    "seg_",
+    "seg_no_analyze_",
+    "seg_no_analyze_no_bbox_",
 ]
 
 # 分割比例：只保留前 60% 的範圍
@@ -34,7 +42,7 @@ for csv_file in tqdm(csv_files, desc="📄 處理CSV檔案"):
 
     # 嘗試每一種前綴
     for prefix in video_prefixes:
-        video_name = f"{prefix}{base_name}.mp4"
+        video_name = f"{prefix}{base_name}.avi"
         video_path = os.path.join(video_dir, video_name)
 
         if not os.path.exists(video_path):
@@ -47,9 +55,9 @@ for csv_file in tqdm(csv_files, desc="📄 處理CSV檔案"):
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         half_width = width // 2
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        fourcc = cv2.VideoWriter_fourcc(*"FFV1")
 
-        output_name = f"{prefix}{base_name}.mp4"
+        output_name = f"{prefix}{base_name}.avi"
         output_path = os.path.join(output_dir, output_name)
         out = cv2.VideoWriter(output_path, fourcc, fps, (half_width, height))
 

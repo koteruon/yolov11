@@ -11,9 +11,6 @@ from tqdm import tqdm
 from ultralytics import YOLO
 from ultralytics.utils.plotting import Annotator, colors
 
-frame_nbr = 32
-padding = frame_nbr // 2
-
 pred_stroke_start_frame = {
     "backhand_chop_01": 1213,
     "backhand_flick_01": 1198,
@@ -99,7 +96,7 @@ class Predict:
         self.frame_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.frame_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.fps = self.cap.get(cv2.CAP_PROP_FPS)
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        fourcc = cv2.VideoWriter_fourcc(*"FFV1")
         self.pose_out = cv2.VideoWriter(pose_output_video_path, fourcc, self.fps, (self.frame_width, self.frame_height))
         self.pose_white_bg_out = cv2.VideoWriter(
             pose_white_bg_output_video_path, fourcc, self.fps, (self.frame_width, self.frame_height)
@@ -240,7 +237,7 @@ class Predict:
         # Configure paddle area data
         self.area_axes.set_xlim((x_min, x_max))
         self.area_axes.set_xlim((x_min, x_max))
-        self.area_axes.set_ylim((0, 5000))
+        self.area_axes.set_ylim((0, 8000))
         self.area_axes.set_xlabel("Frame")
         self.area_axes.set_ylabel("Paddle Pixels Area")
         area_line = mlines.Line2D(
@@ -249,8 +246,8 @@ class Predict:
         self.area_axes.legend(handles=[area_line])
 
         # Configure paddle center data
-        self.center_axes.set_xlim((200, 1000))
-        self.center_axes.set_ylim((200, 1000))
+        self.center_axes.set_xlim((0, 1000))
+        self.center_axes.set_ylim((0, 1000))
         self.center_axes.set_xlabel("x-position")
         self.center_axes.set_ylabel("y-position")
         paddle_line = mlines.Line2D(
@@ -322,7 +319,7 @@ class Predict:
         return frame
 
     def draw_plt(self, frame_no_bbox, frame, frame_with_pose):
-        shift = self.pred_start_frame - padding - 1 if self.frame_count >= self.pred_start_frame - padding else 0
+        shift = self.pred_start_frame - 1 if self.frame_count >= self.pred_start_frame else 0
 
         # Determine x-axis limits for area plot
         x_max = self.frame_count - shift
@@ -601,25 +598,24 @@ if __name__ == "__main__":
     video_dir = f"inference/videos"
     video_names = os.listdir(video_dir)
     for video_name in video_names:
+        video_filename, video_extension = os.path.splitext(video_name)
         input_video_path = f"inference/videos/{video_name}"
-        pose_output_video_path = f"inference/output/videos/pose_{video_name}"  # 人體骨架含物件框
+
+        output_extension = "avi"
+        pose_output_video_path = f"inference/output/videos/pose_{video_filename}.{output_extension}"  # 人體骨架含物件框
         pose_white_bg_output_video_path = (
-            f"inference/output/videos/pose_white_bg_{video_name}"  # 人體骨架不含物件框(背景空白)
+            f"inference/output/videos/pose_white_bg_{video_filename}.{output_extension}"  # 人體骨架不含物件框(背景空白)
         )
-        seg_output_video_path = f"inference/output/videos/seg_{video_name}"  # 球拍面積分割含分析
+        seg_output_video_path = f"inference/output/videos/seg_{video_filename}.{output_extension}"  # 球拍面積分割含分析
         seg_no_analyze_output_video_path = (
-            f"inference/output/videos/seg_no_analyze_{video_name}"  # 球拍面積分割不含分析
+            f"inference/output/videos/seg_no_analyze_{video_filename}.{output_extension}"  # 球拍面積分割不含分析
         )
-        seg_no_analyze_no_bbox_output_video_path = (
-            f"inference/output/videos/seg_no_analyze_no_bbox_{video_name}"  # 球拍面積分割不含分析不含bbox
+        seg_no_analyze_no_bbox_output_video_path = f"inference/output/videos/seg_no_analyze_no_bbox_{video_filename}.{output_extension}"  # 球拍面積分割不含分析不含bbox
+        all_output_video_path = (
+            f"inference/output/videos/all_{video_filename}.{output_extension}"  # 結合人體骨架和球拍面積含分析
         )
-        all_output_video_path = f"inference/output/videos/all_{video_name}"  # 結合人體骨架和球拍面積含分析
-        all_no_analyze_output_video_path = (
-            f"inference/output/videos/all_no_analyze_{video_name}"  # 結合人體骨架和球拍面積不含分析
-        )
-        all_no_analyze_no_area_output_video_path = (
-            f"inference/output/videos/all_no_analyze_no_area_{video_name}"  # 結合人體骨架和球拍面積不含分析
-        )
+        all_no_analyze_output_video_path = f"inference/output/videos/all_no_analyze_{video_filename}.{output_extension}"  # 結合人體骨架和球拍面積不含分析
+        all_no_analyze_no_area_output_video_path = f"inference/output/videos/all_no_analyze_no_area_{video_filename}.{output_extension}"  # 結合人體骨架和球拍面積不含分析
 
         # Create Predict instance and process the video
         predictor = Predict(seg_model_path)

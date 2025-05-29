@@ -237,11 +237,11 @@ class Predict:
         # Configure paddle area data
         self.area_axes.set_xlim((x_min, x_max))
         self.area_axes.set_xlim((x_min, x_max))
-        self.area_axes.set_ylim((0, 8000))
+        self.area_axes.set_ylim((0, 13000))
         self.area_axes.set_xlabel("Frame")
-        self.area_axes.set_ylabel("Paddle Pixels Area")
+        self.area_axes.set_ylabel("Racket Segmentation Area")
         area_line = mlines.Line2D(
-            [], [], marker=None, linewidth=1, color=(0 / 255, 0 / 255, 255 / 255), label="Paddle area", linestyle="-"
+            [], [], marker=None, linewidth=1, color=(0 / 255, 0 / 255, 255 / 255), label="racket area", linestyle="-"
         )
         self.area_axes.legend(handles=[area_line])
 
@@ -256,7 +256,7 @@ class Predict:
             marker="o",
             markersize=5,
             color=(218 / 255, 165 / 255, 32 / 255),
-            label="Paddle route",
+            label="racket trajectory",
             linestyle="None",
         )
         self.center_axes.legend(handles=[paddle_line])

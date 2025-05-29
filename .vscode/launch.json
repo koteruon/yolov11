@@ -1,0 +1,45 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "predict",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "predict.py",
+            "console": "integratedTerminal"
+        },{
+            "name": "self predict",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "self_predict.py",
+            "console": "integratedTerminal"
+        },{
+            "name": "train",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "train.py",
+            "console": "integratedTerminal"
+        },{
+            "name": "split datasets",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "splite_datasets.py",
+            "console": "integratedTerminal"
+        },{
+            "name": "split datasets all",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "splite_datasets_all.py",
+            "console": "integratedTerminal"
+        },{
+            "name": "split datasets all no 9",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "splite_datasets_all_no_9.py",
+            "console": "integratedTerminal"
+        }
+    ]
+}

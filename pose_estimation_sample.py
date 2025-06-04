@@ -2,7 +2,33 @@ from copy import deepcopy
 
 import cv2
 import numpy as np
-from ultralytics.utils.plotting import Annotator
+from ultralytics.utils.plotting import Annotator, colors
+
+colors.pose_palette = np.array(
+    [
+        [255, 128, 0],
+        [255, 153, 51],
+        [255, 178, 102],
+        [230, 230, 0],
+        [255, 153, 255],
+        [0, 204, 255],  # [153, 204, 255],
+        [255, 102, 255],
+        [255, 51, 255],
+        [102, 178, 255],
+        [51, 153, 255],
+        [255, 153, 153],
+        [255, 102, 102],
+        [255, 51, 51],
+        [153, 255, 153],
+        [102, 255, 102],
+        [51, 255, 51],
+        [0, 255, 0],
+        [0, 0, 255],
+        [255, 0, 0],
+        [255, 255, 255],
+    ],
+    dtype=np.uint8,
+)
 
 
 def plot_pose(ori_left_frame, pose_result_names, pose_result_keypoints):
@@ -16,6 +42,9 @@ def plot_pose(ori_left_frame, pose_result_names, pose_result_keypoints):
         pil=False,
         example=pose_result_names,
     )
+
+    annotator.limb_color = colors.pose_palette[[5, 5, 9, 9, 7, 7, 7, 7, 0, 11, 0, 11, 16, 16, 16, 16, 16, 16, 16]]
+    annotator.kpt_color = colors.pose_palette[[16, 16, 16, 16, 16, 7, 7, 0, 11, 0, 11, 7, 7, 5, 9, 5, 9]]
 
     # Plot Pose results (預期是 list of [17, 3])
     for k in reversed(pose_result_keypoints):

@@ -40,6 +40,13 @@
             "request": "launch",
             "program": "splite_datasets_all_no_9.py",
             "console": "integratedTerminal"
+        },{
+            "name": "pose_estimation_sample",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "pose_estimation_sample.py",
+            "console": "integratedTerminal",
+            "justMyCode": false
         }
     ]
 }

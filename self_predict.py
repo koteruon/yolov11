@@ -107,6 +107,7 @@ class Predict:
         pose_white_bg_output_video_path,
         seg_output_video_path,
         seg_no_analyze_output_video_path,
+        seg_and_center_no_analyze_output_video_path,
         seg_no_analyze_no_bbox_output_video_path,
         all_output_video_path,
         all_no_analyze_output_video_path,
@@ -131,6 +132,9 @@ class Predict:
         self.seg_out = cv2.VideoWriter(seg_output_video_path, fourcc, self.fps, (self.frame_width, self.frame_height))
         self.seg_no_analyze_out = cv2.VideoWriter(
             seg_no_analyze_output_video_path, fourcc, self.fps, (self.frame_width, self.frame_height)
+        )
+        self.seg_and_center_no_analyze_no_bbox_out = cv2.VideoWriter(
+            seg_and_center_no_analyze_output_video_path, fourcc, self.fps, (self.frame_width, self.frame_height)
         )
         self.seg_no_analyze_no_bbox_out = cv2.VideoWriter(
             seg_no_analyze_no_bbox_output_video_path, fourcc, self.fps, (self.frame_width, self.frame_height)
@@ -345,7 +349,7 @@ class Predict:
         )
         return frame
 
-    def draw_plt(self, frame_no_bbox, frame, frame_with_pose):
+    def draw_plt(self, seg_and_center_no_analyze_frame, all_no_analyze_frame, frame_no_bbox, frame, frame_with_pose):
         shift = self.pred_start_frame - 1 if self.frame_count >= self.pred_start_frame else 0
 
         # Determine x-axis limits for area plot
@@ -380,11 +384,13 @@ class Predict:
         # Draw circles on the frame
         color_bgrs = [(0, max(c - 30, 0), c) for c in color_components]
         for center, color_bgr in zip(centers, color_bgrs):
+            cv2.circle(seg_and_center_no_analyze_frame, tuple(center), 5, tuple(map(int, color_bgr)), -1)
+            cv2.circle(all_no_analyze_frame, tuple(center), 5, tuple(map(int, color_bgr)), -1)
             cv2.circle(frame_no_bbox, tuple(center), 5, tuple(map(int, color_bgr)), -1)
             cv2.circle(frame, tuple(center), 5, tuple(map(int, color_bgr)), -1)
             cv2.circle(frame_with_pose, tuple(center), 5, tuple(map(int, color_bgr)), -1)
 
-        return frame_no_bbox, frame, frame_with_pose
+        return seg_and_center_no_analyze_frame, all_no_analyze_frame, frame_no_bbox, frame, frame_with_pose
 
     def plot_pose(self, ori_left_frame, pose_result_names, pose_result_boxes, pose_result_keypoints, has_bbox=True):
         img = ori_left_frame  # 1080*960
@@ -399,8 +405,8 @@ class Predict:
             example=names,
         )
 
-        annotator.limb_color = colors.pose_palette[[5, 5, 9, 9, 7, 7, 7, 7, 0, 11, 0, 11, 16, 16, 16, 16, 16, 16, 16]]
-        annotator.kpt_color = colors.pose_palette[[16, 16, 16, 16, 16, 7, 7, 0, 11, 0, 11, 7, 7, 5, 9, 5, 9]]
+        annotator.limb_color = colors.pose_palette[[9, 9, 5, 5, 7, 7, 7, 7, 11, 0, 11, 0, 16, 16, 16, 16, 16, 16, 16]]
+        annotator.kpt_color = colors.pose_palette[[16, 16, 16, 16, 16, 7, 7, 11, 0, 11, 0, 7, 7, 9, 5, 9, 5]]
 
         # Plot Detect results
         if has_bbox:
@@ -565,17 +571,23 @@ class Predict:
                 paddle_area,
             ) = self.seg_frame(seg_frame, pose_frame.copy())
             seg_no_analyze_frame = seg_frame.copy()
+            seg_and_center_no_analyze_frame = seg_frame.copy()
             all_no_analyze_frame = all_frame.copy()
             all_no_analyze_no_area_frame = all_no_area_frame.copy()
 
             # draw plot
-            seg_no_bbox_frame, seg_frame, all_frame = self.draw_plt(seg_no_bbox_frame, seg_frame, all_frame)
+            seg_and_center_no_analyze_frame, all_no_analyze_frame, seg_no_bbox_frame, seg_frame, all_frame = (
+                self.draw_plt(
+                    seg_and_center_no_analyze_frame, all_no_analyze_frame, seg_no_bbox_frame, seg_frame, all_frame
+                )
+            )
 
             # Write the frame to the output video
             self.pose_out.write(pose_frame)
             self.pose_white_bg_out.write(pose_white_frame)
             self.seg_out.write(seg_frame)
             self.seg_no_analyze_out.write(seg_no_analyze_frame)
+            self.seg_and_center_no_analyze_no_bbox_out.write(seg_and_center_no_analyze_frame)
             self.seg_no_analyze_no_bbox_out.write(seg_no_bbox_frame)
             self.all_out.write(all_frame)
             self.all_no_analyze_out.write(all_no_analyze_frame)
@@ -598,6 +610,7 @@ class Predict:
         self.pose_white_bg_out.release()
         self.seg_out.release()
         self.seg_no_analyze_out.release()
+        self.seg_and_center_no_analyze_no_bbox_out.release()
         self.seg_no_analyze_no_bbox_out.release()
         self.all_out.release()
         self.all_no_analyze_out.release()
@@ -640,6 +653,7 @@ if __name__ == "__main__":
         seg_no_analyze_output_video_path = (
             f"inference/output/videos/seg_no_analyze_{video_filename}.{output_extension}"  # 球拍面積分割不含分析
         )
+        seg_and_center_no_analyze_output_video_path = f"inference/output/videos/seg_and_center_no_analyze_{video_filename}.{output_extension}"  # 球拍面積分割和重心不含分析
         seg_no_analyze_no_bbox_output_video_path = f"inference/output/videos/seg_no_analyze_no_bbox_{video_filename}.{output_extension}"  # 球拍面積分割不含分析不含bbox
         all_output_video_path = (
             f"inference/output/videos/all_{video_filename}.{output_extension}"  # 結合人體骨架和球拍面積含分析
@@ -655,6 +669,7 @@ if __name__ == "__main__":
             pose_white_bg_output_video_path,
             seg_output_video_path,
             seg_no_analyze_output_video_path,
+            seg_and_center_no_analyze_output_video_path,
             seg_no_analyze_no_bbox_output_video_path,
             all_output_video_path,
             all_no_analyze_output_video_path,

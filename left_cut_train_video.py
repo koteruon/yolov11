@@ -7,7 +7,7 @@ from tqdm import tqdm
 # 設定資料夾路徑
 video_dir = "inference/output/videos"
 csv_dir = "inference/select_frame"
-output_dir = "inference/output/left_videos"
+output_dir = "inference/output/left_cut_videos"
 os.makedirs(output_dir, exist_ok=True)
 
 # 可接受的影片前綴清單
@@ -17,6 +17,7 @@ video_prefixes = [
     "all_no_analyze_no_area_",
     "pose_",
     "pose_white_bg_",
+    "seg_and_center_no_analyze_",
     "seg_",
     "seg_no_analyze_",
     "seg_no_analyze_no_bbox_",

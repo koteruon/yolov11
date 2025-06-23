@@ -43,8 +43,8 @@ def plot_pose(ori_left_frame, pose_result_names, pose_result_keypoints):
         example=pose_result_names,
     )
 
-    annotator.limb_color = colors.pose_palette[[5, 5, 9, 9, 7, 7, 7, 7, 0, 11, 0, 11, 16, 16, 16, 16, 16, 16, 16]]
-    annotator.kpt_color = colors.pose_palette[[16, 16, 16, 16, 16, 7, 7, 0, 11, 0, 11, 7, 7, 5, 9, 5, 9]]
+    annotator.limb_color = colors.pose_palette[[9, 9, 5, 5, 7, 7, 7, 7, 11, 0, 11, 0, 16, 16, 16, 16, 16, 16, 16]]
+    annotator.kpt_color = colors.pose_palette[[16, 16, 16, 16, 16, 7, 7, 11, 0, 11, 0, 7, 7, 9, 5, 9, 5]]
 
     # Plot Pose results (預期是 list of [17, 3])
     for k in reversed(pose_result_keypoints):
@@ -66,23 +66,23 @@ canvas = np.full((1080, 960, 3), 255, dtype=np.uint8)
 # 定義關鍵點 [x, y, conf]
 keypoints_xy = np.array(
     [
-        [480, 300],
-        [460, 290],
-        [500, 290],
-        [440, 300],
-        [520, 300],
-        [400, 400],
-        [560, 400],
-        [360, 520],
-        [600, 520],
-        [330, 640],
-        [630, 640],
-        [420, 640],
-        [540, 640],
-        [420, 800],
-        [540, 800],
-        [420, 960],
-        [540, 960],
+        [480, 300],  # 鼻子
+        [500, 290],  # 左眼
+        [460, 290],  # 右眼
+        [520, 300],  # 左耳
+        [440, 300],  # 右耳
+        [560, 400],  # 左肩
+        [400, 400],  # 右肩
+        [600, 520],  # 左肘
+        [360, 520],  # 右肘
+        [630, 640],  # 左手腕
+        [330, 640],  # 右手腕
+        [540, 640],  # 左臀
+        [420, 640],  # 右臀
+        [540, 800],  # 左膝
+        [420, 800],  # 右膝
+        [540, 960],  # 左腳踝
+        [420, 960],  # 右腳踝
     ],
     dtype=float,
 )

@@ -23,14 +23,14 @@ split_radio_train = 0.8
 split_radio_test = 0.2
 
 stroke_id_map = {
-    1: {"stroke_list": ["backhand_chop"], "videos": [None]},
-    2: {"stroke_list": ["backhand_flick"], "videos": [None]},
-    3: {"stroke_list": ["backhand_push"], "videos": [None]},
-    4: {"stroke_list": ["backhand_topspin"], "videos": [None]},
-    5: {"stroke_list": ["forehand_chop"], "videos": [None]},
-    6: {"stroke_list": ["forehand_drive"], "videos": [None]},
-    7: {"stroke_list": ["forehand_smash"], "videos": [None]},
-    8: {"stroke_list": ["forehand_topspin"], "videos": [None]},
+    1: {"stroke_list": ["backhand_chop"], "videos": [None], "test_count": 10},
+    2: {"stroke_list": ["backhand_flick"], "videos": [None], "test_count": 9},
+    3: {"stroke_list": ["backhand_push"], "videos": [None], "test_count": 13},
+    4: {"stroke_list": ["backhand_topspin"], "videos": [None], "test_count": 7},
+    5: {"stroke_list": ["forehand_chop"], "videos": [None], "test_count": 9},
+    6: {"stroke_list": ["forehand_drive"], "videos": [None], "test_count": 5},
+    7: {"stroke_list": ["forehand_smash"], "videos": [None], "test_count": 8},
+    8: {"stroke_list": ["forehand_topspin"], "videos": [None], "test_count": 13},
 }
 
 select_frames_dir = "./hit_datasets/select_frame"
@@ -48,10 +48,15 @@ for select_frame in tqdm(select_frames):
             df = pd.read_csv(os.path.join(select_frames_dir, select_frame))
             # 將範圍分為訓練集 (train) 和測試集 (test)，比例為 8:2 且均勻分配
             num_ranges = len(df)
+            test_count = stroke_map["test_count"]
+
             # train_indices = np.random.choice(range(num_ranges), size=int(num_ranges * split_radio), replace=False)
-            train_indices = list(range(int(num_ranges * split_radio_train)))
-            no_test_indices = list(range(int(num_ranges * (1 - split_radio_test))))
-            test_indices = [i for i in range(num_ranges) if i not in no_test_indices]
+            # train_indices = list(range(int(num_ranges * split_radio_train)))
+            # no_test_indices = list(range(int(num_ranges * (1 - split_radio_test))))
+            # test_indices = [i for i in range(num_ranges) if i not in no_test_indices]
+            test_indices = list(range(num_ranges - test_count, num_ranges))
+            train_indices = list(range(0, num_ranges - test_count))
+
             df["category"] = [
                 "train" if i in train_indices else "test" if i in test_indices else "other" for i in range(num_ranges)
             ]

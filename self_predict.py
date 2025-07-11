@@ -1,5 +1,7 @@
+import argparse
 import json
 import os
+from collections import defaultdict
 from copy import deepcopy
 
 import cv2
@@ -38,31 +40,37 @@ colors.pose_palette = np.array(
 )
 
 
-pred_stroke_start_frame = {
-    "backhand_chop_01": 1213,
-    "backhand_flick_01": 1198,
-    "backhand_push_01": 1613,
-    "backhand_topspin_01": 910,
-    "forehand_chop_01": 1098,
-    "forehand_drive_01": 624,
-    "forehand_smash_01": 1108,
-    "forehand_topspin_01": 1630,
-}
+pred_stroke_start_frame = defaultdict(
+    lambda: 1,
+    {
+        "backhand_chop_01": 1213,
+        "backhand_flick_01": 1198,
+        "backhand_push_01": 1613,
+        "backhand_topspin_01": 910,
+        "forehand_chop_01": 1098,
+        "forehand_drive_01": 624,
+        "forehand_smash_01": 1108,
+        "forehand_topspin_01": 1630,
+    },
+)
 
 
 class Predict:
     def __init__(self, seg_model_path=None):
         # Define stroke index
-        self.stroke_id = {
-            "backhand_chop": 1,
-            "backhand_flick": 2,
-            "backhand_push": 3,
-            "backhand_topspin": 4,
-            "forehand_chop": 5,
-            "forehand_drive": 6,
-            "forehand_smash": 7,
-            "forehand_topspin": 8,
-        }
+        self.stroke_id = defaultdict(
+            lambda: 9,
+            {
+                "backhand_chop": 1,
+                "backhand_flick": 2,
+                "backhand_push": 3,
+                "backhand_topspin": 4,
+                "forehand_chop": 5,
+                "forehand_drive": 6,
+                "forehand_smash": 7,
+                "forehand_topspin": 8,
+            },
+        )
 
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         # Initialize YOLO model
@@ -649,8 +657,7 @@ class Predict:
         self.all_no_analyze_out.release()
         self.all_no_analyze_no_area_out.release()
 
-    def create_dataset_dir(self):
-        base_dir = "hit_datasets"
+    def create_dataset_dir(self, base_dir):
         self.annos_dir = os.path.join(base_dir, "annotations")
         self.video_dir = os.path.join(base_dir, "videos")
         self.image_dir = os.path.join(self.video_dir, self.input_video_filename)
@@ -667,48 +674,65 @@ class Predict:
             os.makedirs(self.anno_dir)
 
 
+def generate_output_paths(base_dir, video_filename, output_extension):
+    def out(name):
+        return os.path.join(base_dir, f"{name}_{video_filename}.{output_extension}")
+
+    return {
+        "pose": out("pose"),
+        "pose_white_bg": out("pose_white_bg"),
+        "seg": out("seg"),
+        "seg_no_analyze": out("seg_no_analyze"),
+        "seg_and_center_no_analyze": out("seg_and_center_no_analyze"),
+        "seg_and_center_no_analyze_no_bbox": out("seg_and_center_no_analyze_no_bbox"),
+        "seg_no_analyze_no_bbox": out("seg_no_analyze_no_bbox"),
+        "all": out("all"),
+        "all_no_analyze": out("all_no_analyze"),
+        "all_no_analyze_no_area": out("all_no_analyze_no_area"),
+    }
+
+
+def process_video_file(input_video_path, output_dir, output_extension, seg_model_path, hit_dir):
+    video_name = os.path.basename(input_video_path)
+    video_filename, _ = os.path.splitext(video_name)
+
+    paths = generate_output_paths(output_dir, video_filename, output_extension)
+
+    predictor = Predict(seg_model_path)
+    predictor.load_video_data(
+        input_video_path,
+        paths["pose"],
+        paths["pose_white_bg"],
+        paths["seg"],
+        paths["seg_no_analyze"],
+        paths["seg_and_center_no_analyze"],
+        paths["seg_and_center_no_analyze_no_bbox"],
+        paths["seg_no_analyze_no_bbox"],
+        paths["all"],
+        paths["all_no_analyze"],
+        paths["all_no_analyze_no_area"],
+    )
+    predictor.create_dataset_dir(hit_dir)
+    predictor.process_video()
+
+
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--video_dir", type=str, default="inference/videos", help="")
+    parser.add_argument("--video_path", type=str, default="", help="")
+    parser.add_argument("--video_output", type=str, default="inference/output/videos", help="")
+    parser.add_argument("--hit_dir", type=str, default="hit_datasets", help="")
+    p = parser.parse_args()
+
     # Paths
     seg_model_path = "runs/segment/table_tennis_stroke_postures_all_20250314_01/weights/best.pt"
+    seg_model_path = "runs/segment/table_tennis_stroke_postures_all_20250314_01/weights/best.pt"
+    output_extension = "avi"
 
-    video_dir = f"inference/videos"
-    video_names = os.listdir(video_dir)
-    for video_name in video_names:
-        video_filename, video_extension = os.path.splitext(video_name)
-        input_video_path = f"inference/videos/{video_name}"
-
-        output_extension = "avi"
-        pose_output_video_path = f"inference/output/videos/pose_{video_filename}.{output_extension}"  # 人體骨架含物件框
-        pose_white_bg_output_video_path = (
-            f"inference/output/videos/pose_white_bg_{video_filename}.{output_extension}"  # 人體骨架不含物件框(背景空白)
-        )
-        seg_output_video_path = f"inference/output/videos/seg_{video_filename}.{output_extension}"  # 球拍面積分割含分析
-        seg_no_analyze_output_video_path = (
-            f"inference/output/videos/seg_no_analyze_{video_filename}.{output_extension}"  # 球拍面積分割不含分析
-        )
-        seg_and_center_no_analyze_output_video_path = f"inference/output/videos/seg_and_center_no_analyze_{video_filename}.{output_extension}"  # 球拍面積分割和重心不含分析
-        seg_and_center_no_analyze_no_bbox_output_video_path = f"inference/output/videos/seg_and_center_no_analyze_no_bbox_{video_filename}.{output_extension}"  # 球拍面積分割和重心不含分析
-        seg_no_analyze_no_bbox_output_video_path = f"inference/output/videos/seg_no_analyze_no_bbox_{video_filename}.{output_extension}"  # 球拍面積分割不含分析不含bbox
-        all_output_video_path = (
-            f"inference/output/videos/all_{video_filename}.{output_extension}"  # 結合人體骨架和球拍面積含分析
-        )
-        all_no_analyze_output_video_path = f"inference/output/videos/all_no_analyze_{video_filename}.{output_extension}"  # 結合人體骨架和球拍面積不含分析
-        all_no_analyze_no_area_output_video_path = f"inference/output/videos/all_no_analyze_no_area_{video_filename}.{output_extension}"  # 結合人體骨架和球拍面積不含分析
-
-        # Create Predict instance and process the video
-        predictor = Predict(seg_model_path)
-        predictor.load_video_data(
-            input_video_path,
-            pose_output_video_path,
-            pose_white_bg_output_video_path,
-            seg_output_video_path,
-            seg_no_analyze_output_video_path,
-            seg_and_center_no_analyze_output_video_path,
-            seg_and_center_no_analyze_no_bbox_output_video_path,
-            seg_no_analyze_no_bbox_output_video_path,
-            all_output_video_path,
-            all_no_analyze_output_video_path,
-            all_no_analyze_no_area_output_video_path,
-        )
-        predictor.create_dataset_dir()
-        predictor.process_video()
+    if p.video_path != "":
+        process_video_file(p.video_path, p.video_output, output_extension, seg_model_path, p.hit_dir)
+    else:
+        video_names = os.listdir(p.video_dir)
+        for video_name in video_names:
+            input_video_path = os.path.join(p.video_dir, video_name)
+            process_video_file(input_video_path, p.video_output, output_extension, seg_model_path, p.hit_dir)

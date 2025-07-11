@@ -9,6 +9,8 @@ import torch
 from sklearn.preprocessing import OneHotEncoder
 from tqdm import tqdm
 
+from stroke_posture_dataset import prepare_stroke_posture_dataset
+
 cur_seed = 2
 
 random.seed(cur_seed)
@@ -334,162 +336,16 @@ print(f"合併完成，輸出檔案：{os.path.join(output_folder,output_test_fi
 
 # -------------------------------skateformer--------------------------------
 
-
-def generate_range(num):
-    right_span = frame_nbr // 2
-    left_span = frame_nbr - right_span
-    base = (num // 100000) * 100000  # 取得數字所屬的百位區間
-    tail_digit = num % 100000  # 取得尾數
-
-    min_val = tail_digit - left_span + 1
-    max_val = tail_digit + right_span
-    valid_numbers = np.arange(min_val, max_val + 1) + base
-
-    return np.pad(valid_numbers, (0, frame_nbr - len(valid_numbers)), constant_values=-1).tolist()
-
-
-def one_hot_vector(labels):
-    encoder = OneHotEncoder(sparse_output=False)
-    return encoder.fit_transform(labels)
-
-
-def split_dataset(
-    train_skes_joints,
-    train_labels,
-    valid_skes_joints,
-    valid_labels,
-    train_paths,
-    train_timestamps,
-    test_paths,
-    test_timestamps,
-):
-    train_x = train_skes_joints
-    train_y = one_hot_vector(train_labels)
-    test_x = valid_skes_joints
-    test_y = one_hot_vector(valid_labels)
-
-    save_name = "./hit_datasets/annotations/stroke_posture.npz"
-    np.savez(
-        save_name,
-        x_train=train_x,
-        y_train=train_y,
-        x_test=test_x,
-        y_test=test_y,
-        train_paths=train_paths,
-        train_timestamps=train_timestamps,
-        test_paths=test_paths,
-        test_timestamps=test_timestamps,
-    )
-
-    print(f"輸出檔案：{save_name}")
-
-
 stroke_posture_train_gt_path = "./hit_datasets/annotations/stroke_postures_train_gt.json"
 stroke_posture_test_gt_path = "./hit_datasets/annotations/stroke_postures_test_gt.json"
 stroke_posture_train_person_bbox_kpts = "./hit_datasets/annotations/stroke_postures_train_person_bbox_kpts.json"
 stroke_posture_test_person_bbox_kpts = "./hit_datasets/annotations/stroke_postures_test_person_bbox_kpts.json"
-
-train_paths = []
-train_timestamps = []
-train_ske_joints = []
-train_labels = []
-with open(stroke_posture_train_person_bbox_kpts, "r", encoding="utf-8") as f_person:
-    image_id_map_skatelon = {}
-    try:
-        persons = json.load(f_person)
-        for person in tqdm(persons):
-            image_id = person["image_id"]
-            skatelon = person["keypoints"]
-            image_id_map_skatelon[image_id] = skatelon
-    except json.JSONDecodeError as e:
-        print(f"讀取錯誤：{filename} - {e}")
-
-    with open(stroke_posture_train_gt_path, "r", encoding="utf-8") as f_gt:
-        try:
-            datas = json.load(f_gt)
-            images = datas["images"]
-            images_map = {}
-            for image in tqdm(images):
-                image_id = image["id"]
-                movie = image["movie"]
-                path = "data/stroke_postures/videos/" + movie
-                timestamp = int(image["timestamp"])
-                images_map[image_id] = (path, timestamp)
-
-            annotations = datas["annotations"]
-            for annotation in tqdm(annotations):
-                image_id = annotation["image_id"]
-                action_id = annotation["action_ids"]
-                ske_joints = []
-                skatelon_image_id_list = generate_range(image_id)
-                for skatelon_image_id in skatelon_image_id_list:
-                    ske_joints.append(image_id_map_skatelon[skatelon_image_id])
-                ske_joints = np.array(ske_joints, dtype=np.float32)
-                assert len(ske_joints) == frame_nbr
-                ske_joints = ske_joints[:, :, :2]
-                ske_joints = ske_joints.reshape(frame_nbr, -1)
-                train_ske_joints.append(ske_joints)
-                train_labels.append(action_id)
-                path, timestamp = images_map[image_id]
-                train_paths.append(path)
-                train_timestamps.append(timestamp)
-        except json.JSONDecodeError as e:
-            print(f"讀取錯誤：{filename} - {e}")
-
-test_paths = []
-test_timestamps = []
-test_ske_joints = []
-test_labels = []
-with open(stroke_posture_test_person_bbox_kpts, "r", encoding="utf-8") as f_person:
-    image_id_map_skatelon = {}
-    try:
-        persons = json.load(f_person)
-        for person in tqdm(persons):
-            image_id = person["image_id"]
-            skatelon = person["keypoints"]
-            image_id_map_skatelon[image_id] = skatelon
-    except json.JSONDecodeError as e:
-        print(f"讀取錯誤：{filename} - {e}")
-
-    with open(stroke_posture_test_gt_path, "r", encoding="utf-8") as f_gt:
-        try:
-            datas = json.load(f_gt)
-            images = datas["images"]
-            images_map = {}
-            for image in tqdm(images):
-                image_id = image["id"]
-                movie = image["movie"]
-                path = "data/stroke_postures/videos/" + movie
-                timestamp = int(image["timestamp"])
-                images_map[image_id] = (path, timestamp)
-
-            annotations = datas["annotations"]
-            for annotation in tqdm(annotations):
-                image_id = annotation["image_id"]
-                action_id = annotation["action_ids"]
-                ske_joints = []
-                skatelon_image_id_list = generate_range(image_id)
-                for skatelon_image_id in skatelon_image_id_list:
-                    ske_joints.append(image_id_map_skatelon[skatelon_image_id])
-                ske_joints = np.array(ske_joints, dtype=np.float32)
-                assert len(ske_joints) == frame_nbr
-                ske_joints = ske_joints[:, :, :2]
-                ske_joints = ske_joints.reshape(frame_nbr, -1)
-                test_ske_joints.append(ske_joints)
-                test_labels.append(action_id)
-                path, timestamp = images_map[image_id]
-                test_paths.append(path)
-                test_timestamps.append(timestamp)
-        except json.JSONDecodeError as e:
-            print(f"讀取錯誤：{filename} - {e}")
-
-split_dataset(
-    train_ske_joints,
-    train_labels,
-    test_ske_joints,
-    test_labels,
-    train_paths,
-    train_timestamps,
-    test_paths,
-    test_timestamps,
+dataset_save_path = "./hit_datasets/annotations/stroke_posture.npz"
+prepare_stroke_posture_dataset(
+    32,
+    stroke_posture_train_gt_path,
+    stroke_posture_test_gt_path,
+    stroke_posture_train_person_bbox_kpts,
+    stroke_posture_test_person_bbox_kpts,
+    dataset_save_path,
 )

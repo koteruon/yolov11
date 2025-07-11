@@ -234,5 +234,8 @@ yolo_datasets/*
 hit_datasets_old/*
 hit_datasets_only_stroke/*
 hit_datasets_now_used/*
+hit_datasets_keep/*
+hit_datasets_test/*
 inference_now_used/*
+inference_keep/*
 !.vscode/*

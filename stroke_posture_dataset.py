@@ -111,19 +111,25 @@ def prepare_stroke_posture_dataset(
     )
 
 
-hit_dir = "hit_datasets_test"
+if __name__ == "__main__":
 
-stroke_posture_train_gt_path = os.path.join(hit_dir, "annotations/M-3_01/stroke_postures_train_gt.json")
-stroke_posture_test_gt_path = os.path.join(hit_dir, "annotations/M-3_01/stroke_postures_train_gt.json")
-stroke_posture_train_person_bbox_kpts = os.path.join(hit_dir, "annotations/M-3_01/stroke_postures_train_bbox_kpts.json")
-stroke_posture_test_person_bbox_kpts = os.path.join(hit_dir, "annotations/M-3_01/stroke_postures_train_bbox_kpts.json")
-dataset_save_path = os.path.join(hit_dir, "annotations/M-3_01/stroke_posture.npz")
+    hit_dir = "hit_datasets_test"
 
-prepare_stroke_posture_dataset(
-    32,
-    stroke_posture_train_gt_path,
-    stroke_posture_test_gt_path,
-    stroke_posture_train_person_bbox_kpts,
-    stroke_posture_test_person_bbox_kpts,
-    dataset_save_path,
-)
+    stroke_posture_train_gt_path = os.path.join(hit_dir, "annotations/M-3_01/stroke_postures_train_gt.json")
+    stroke_posture_test_gt_path = os.path.join(hit_dir, "annotations/M-3_01/stroke_postures_train_gt.json")
+    stroke_posture_train_person_bbox_kpts = os.path.join(
+        hit_dir, "annotations/M-3_01/stroke_postures_train_bbox_kpts.json"
+    )
+    stroke_posture_test_person_bbox_kpts = os.path.join(
+        hit_dir, "annotations/M-3_01/stroke_postures_train_bbox_kpts.json"
+    )
+    dataset_save_path = os.path.join(hit_dir, "annotations/M-3_01/stroke_posture.npz")
+
+    prepare_stroke_posture_dataset(
+        32,
+        stroke_posture_train_gt_path,
+        stroke_posture_test_gt_path,
+        stroke_posture_train_person_bbox_kpts,
+        stroke_posture_test_person_bbox_kpts,
+        dataset_save_path,
+    )
